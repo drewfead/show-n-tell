@@ -1,0 +1,9 @@
+#!/bin/bash
+
+bash lock.sh --acquire || exit 1
+
+account_id=`aws ec2 describe-security-groups --group-names 'Default' --query 'SecurityGroups[0].OwnerId' --output text`
+export TF_VAR_accountId=$account_id
+/home/ec2-user/terraform/terraform "$@"
+
+bash lock.sh --release

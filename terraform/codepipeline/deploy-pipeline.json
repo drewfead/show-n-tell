@@ -1,0 +1,126 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Creates the deploy process for artifacts that have been created on the build pipeline.",
+  "Parameters": {
+    "PipelineName": {
+      "Description": "name of this pipeline",
+      "Type": "String"
+    },
+    "ReadyFileKey": {
+      "Description": "name for the ready file that should be created",
+      "Type": "String"
+    },
+    "ReadyFileBucket": {
+      "Description": "name of the s3 bucket to dump built artifacts",
+      "Type": "String"
+    },
+    "Color": {
+      "Description": "deployment color",
+      "Type": "String"
+    },
+    "GWAppName": {
+      "Description": "gw app name",
+      "Default": "show-gw",
+      "Type": "String"
+    },
+    "SuperRoleARN": {
+      "Description": "super role ARN to use for getting permissions for resources",
+      "Default": "arn:aws:iam::555163251479:role/SuperRole",
+      "Type": "String"
+    },
+    "ParseDeployReadyFileLambda": {
+      "Type": "String",
+      "Description": "name of the parseReadyFileLambda"
+    },
+    "GWAppColoredRuntime": {
+      "Type": "String",
+      "Description": "fully qualified runtime name of gateway"
+    },
+    "Depends": {
+      "Description": "unused field to resolve build-order dependencies",
+      "Type": "String"
+    },
+    "DeploymentConfig": {
+      "Description": "runtime:branch:color:universeSuffix",
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "DeployPipeline": {
+      "Type": "AWS::CodePipeline::Pipeline",
+      "Properties": {
+        "RoleArn": { "Ref": "SuperRoleARN" },
+        "Stages": [{
+          "Name": "Source",
+          "Actions": [{
+            "RunOrder": 1,
+            "ActionTypeId": {
+              "Category": "Source",
+              "Owner": "AWS",
+              "Version": "1",
+              "Provider": "S3"
+            },
+            "Configuration": {
+              "S3Bucket": { "Ref": "ReadyFileBucket" },
+              "S3ObjectKey": { "Ref": "ReadyFileKey" }
+            },
+            "Name": "ListenForReadyFile",
+            "OutputArtifacts": [{ "Name": "ready-file" }]
+          }]
+        },
+        {
+          "Name": "Package",
+          "Actions": [{
+            "InputArtifacts": [{ "Name": "ready-file" }],
+            "RunOrder": 1,
+            "ActionTypeId": {
+              "Category": "Invoke",
+              "Owner": "AWS",
+              "Version": "1",
+              "Provider": "Lambda"
+            },
+            "OutputArtifacts": [
+              { "Name": { "Ref": "GWAppName" }}
+            ],
+            "Configuration": {
+              "FunctionName": { "Ref": "ParseDeployReadyFileLambda" }
+            },
+            "Name": "ParseReadyFile"
+          }]
+        },
+          {
+            "Name": "Deploy",
+            "Actions": [
+              {
+                "InputArtifacts": [
+                  {
+                    "Name": {
+                      "Ref": "GWAppName"
+                    }
+                  }
+                ],
+                "RunOrder": 1,
+                "ActionTypeId": {
+                  "Category": "Deploy",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "ElasticBeanstalk"
+                },
+                "OutputArtifacts": [],
+                "Configuration": {
+                  "ApplicationName": {
+                    "Ref": "GWAppName"
+                  },
+                  "EnvironmentName": {
+                    "Ref": "GWAppColoredRuntime"
+                  }
+                },
+                "Name": "DeployShowGW"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,139 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Creates the build process for a git branch.",
+  "Parameters": {
+    "Project": {
+      "Description": "project to build",
+      "Default": "show-n-tell",
+      "Type": "String"
+    },
+    "Branch": {
+      "Description": "branch to build on",
+      "Default": "master",
+      "Type": "String"
+    },
+    "UniverseName": {
+      "Description": "universe the build should be in",
+      "Default": "universe",
+      "Type": "String"
+    },
+    "PipelineName": {
+      "Description": "name of the build code pipeline",
+      "Type": "String"
+    },
+    "S3BucketName": {
+      "Description": "name of the s3 bucket to dump built artifacts",
+      "Type": "String"
+    },
+    "S3FileKey": {
+      "Description": "path to write the readyfile to",
+      "Type": "String"
+    },
+    "ReadyFileKey": {
+      "Description": "parseable ready file syntax (bucket-name:path/to/readyfile.json",
+      "Type": "String"
+    },
+    "GWAppName": {
+      "Description": "gw app name",
+      "Default": "show-gw",
+      "Type": "String"
+    },
+    "SuperRoleARN": {
+      "Description": "super role ARN to use for getting permissions for resources",
+      "Default": "arn:aws:iam::555163251479:role/SuperRole",
+      "Type": "String"
+    },
+    "CreateDeployReadyFileLambda": {
+      "Description": "name of the deployReadyFileLambda",
+      "Type": "String"
+    },
+    "Depends": {
+      "Description": "unused field to resolve build-order dependencies",
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "BuildPipeline": {
+      "Type": "AWS::CodePipeline::Pipeline",
+      "Properties": {
+        "RoleArn": { "Ref": "SuperRoleARN" },
+        "Stages": [{
+          "Name": "Source",
+          "Actions": [{
+            "InputArtifacts": [],
+            "RunOrder": 1,
+            "ActionTypeId": {
+              "Category": "Source",
+              "Owner": "AWS",
+              "Version": "1",
+              "Provider": "CodeCommit"
+            },
+            "OutputArtifacts": [{ "Name": "source" }],
+            "Configuration": {
+              "BranchName": { "Ref": "Branch" },
+              "RepositoryName": { "Ref": "Project" }
+            },
+            "Name": "GitHook"
+          }]},
+          {
+            "Name": "Build",
+            "Actions": [{
+              "InputArtifacts": [{ "Name": "source" }],
+              "RunOrder": 1,
+              "ActionTypeId": {
+                "Category": "Build",
+                "Owner": "Custom",
+                "Version": "1",
+                "Provider": "LeadIntakeBuildProvider"
+              },
+              "OutputArtifacts": [
+                { "Name": { "Ref": "GWAppName" }}
+              ],
+              "Configuration": {
+                "ProjectName": { "Ref": "Project" }
+              },
+              "Name": "BuildArtifacts"
+            }]
+          },
+          {
+            "Name": "Package",
+            "Actions": [{
+                "InputArtifacts": [
+                  { "Name": { "Ref": "GWAppName" }}
+                ],
+                "RunOrder": 1,
+                "ActionTypeId": {
+                  "Category": "Invoke",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "Lambda"
+                },
+                "OutputArtifacts": [],
+                "Configuration": {
+                  "FunctionName": { "Ref": "CreateDeployReadyFileLambda" },
+                  "UserParameters": { "Ref": "ReadyFileKey" }
+                },
+                "Name": "CreateReadyFile"
+              }
+            ]
+          }
+        ],
+        "ArtifactStore": {
+          "Type": "S3",
+          "Location": { "Ref": "S3BucketName" }
+        },
+        "Name": { "Ref": "PipelineName" }
+      }
+    }
+  },
+  "Outputs": {
+    "ReadyFileKey": {
+      "Description": "key of the ready file",
+      "Value": { "Ref": "S3FileKey" }
+    },
+    "ReadyFileBucket": {
+      "Description": "bucket that holds the ready file",
+      "Value": { "Ref": "S3BucketName" }
+    }
+  }
+}
